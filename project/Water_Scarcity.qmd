@@ -1,0 +1,144 @@
+---
+title: "Water_Scarcity"
+format: html
+editor: visual
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## Water Scarcity in Schools
+
+[**Have you wondered about the significance of water availability in schools?**]{style="color:blue"}
+
+We all know that water is an important natural resource. Water availability in schools is undeniably crucial for the health and well-being of students worldwide. Exploring the data from the United Nations on *"Schools with limited and basic water availability"* provides valuable insights into this matter. Starting with a global perspective, it's evident that many countries in the African continent are grappling with insufficient water resources in schools.
+
+Let's begin the analysis with the latest trend of water availability in schools globally.
+
+## Total Water Availability in Each Country in 2021
+
+```{r}
+install.packages("tidyverse")
+install.packages("maps")
+library(tidyverse)
+library(maps)
+
+limited_water_data <- read_csv("/cloud/project/unicef_indicator_1.csv")
+basic_water_data <- read_csv("/cloud/project/unicef_indicator_3.csv")
+metadata <- read_csv("/cloud/project/unicef_metadata.csv")
+continent_data <- read_csv("/cloud/project/data_right_3.csv")
+
+
+# Merge the data based on year and country
+merged_data <- merge(limited_water_data, basic_water_data, by = c("country", "time_period"), all = TRUE)
+
+# Calculate the sum of obs_value for each country and year
+merged_data <- mutate(merged_data, total_obs = obs_value.x + obs_value.y)
+
+# Read world map data
+world_map <- map_data("world")
+
+# Filter data for the year 2021
+data_2021 <- filter(merged_data, time_period == 2021)
+
+# Merge with world map data
+merged_map_data <- merge(world_map, data_2021, by.x = "region", by.y = "country", all.x = TRUE)
+
+# Plot world map with geom_polygon
+ggplot() +
+  geom_polygon(data = merged_map_data, aes(x = long, y = lat, group = group, fill = total_obs)) +
+  scale_fill_gradient(low = "#e80c0c", high = "#37c43e", name = "Total obs_value", limits = c(0, 100), breaks = seq(0, 100, by = 10)) +
+  theme_minimal() +
+  theme(legend.position = "hide")
+```
+
+## Top 10 Countries with Least Water Availability in 2021
+
+```{r}
+# Filter data for the year 2021
+data_2021 <- filter(merged_data, time_period == 2021)
+
+# Sort the data by total_obs in ascending order
+data_2021_sorted <- arrange(data_2021, total_obs)
+
+# Take the top 10 countries with the least total_obs
+top_10_countries <- head(data_2021_sorted, 10)
+
+# Create a bar chart
+ggplot(top_10_countries, aes(x = reorder(country, total_obs), y = total_obs)) +
+  geom_bar(stat = "identity", fill = "#eb4034") +
+  labs(x = "Country", y = "Water Availability (%)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Zooming in on countries where less than 50% of schools have adequate (basic+limited) water access, we can discern trends and disparities. As seen in the map and the chart, countries in the [African continent]{style="color:red"} are suffering from a lack of adequate water in schools. Let's focus on a comparative analysis of three specific countries—[Madagascar, Central Africa, and Ethiopia]{style="color:green"}—to track their progress over recent years. While Madagascar shows signs of improvement, Central Africa and Ethiopia have remained relatively stagnant in terms of water availability.
+
+## Countries with schools at \< 50% Total Water Availability by Year
+
+```{r}
+# Determine the number of countries per year where the sum of obs_value is less than 50%
+countries_less_than_50 <- merged_data %>%
+  group_by(time_period) %>%
+  summarise(num_countries_less_than_50 = sum(total_obs < 50, na.rm = TRUE))
+
+# Create a line chart
+ggplot(countries_less_than_50, aes(x = time_period, y = num_countries_less_than_50)) +
+  geom_line(color = "#eb4034") +
+  geom_point() +
+  labs(x = "Year", y = "Countries Count") + 
+  xlim(2012, 2023)
+```
+
+## Water Availability Over Time
+
+```{r}
+# Merge with continent information
+merged_data <- merge(merged_data, continent_data, by = "country", all.x = TRUE)
+
+# Merge with metadata information
+merged_data <- merge(metadata, merged_data, by.x = c("country", "alpha_2_code", "alpha_3_code", "numeric_code", "year"), by.y = c("country", "alpha_2_code", "alpha_3_code", "numeric_code", "time_period"), all.x = TRUE)
+
+# Filter data for the three countries
+african_countries <- merged_data %>%
+  filter(country %in% c("Central African Republic", "Ethiopia", "Madagascar"))
+
+# Plot time series chart with trend line
+ggplot(african_countries, aes(x = year, y = total_obs, color = country)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +  # Add trend line
+  labs(x = "Year", y = "Water Availability (%)") +
+  scale_color_manual(values = c("Central African Republic" = "blue", "Ethiopia" = "red", "Madagascar" = "green")) +
+  theme_minimal() + 
+  xlim(2012, 2023) + 
+  facet_wrap(~country, scales = "free_y") + 
+  guides(color = FALSE)
+```
+
+From the trend, it is visible that the number of countries has decreased lately and out of the 3 countries, Madagascar has been increasing whereas, Central Africa and Ethiopia have been steadily in the same position for the past few years.
+
+The divergence in trends among these regions depicts the interplay of factors contributing to the water availability like socio-economic conditions.
+
+## Life Expectancy vs Population
+
+```{r}
+filtered_data <- merged_data %>% 
+  filter(!is.na(continent))
+
+# Plot scatter plot with ggplot2
+ggplot(filtered_data, aes(x = `Population, total`, y = `Life expectancy at birth, total (years)`, size = total_obs, color = continent)) +
+  geom_point(alpha = 0.1) +
+  scale_size_continuous(name = "Total obs", range = c(2, 10)) +
+  scale_color_manual(values = c("Asia" = "blue", "Europe" = "#006000", "Africa" = "red", "North America" = "purple", "South America" = "orange", "Oceania" = "yellow")) +
+  geom_smooth(method = "lm", se = FALSE) + # Add trend line
+  labs(x = "Population", y = "Life Expectancy", color = "Continent") +
+  theme_minimal() + 
+  guides(size = FALSE) + 
+  scale_x_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M"), breaks = seq(0, max(filtered_data$`Population, total`), by = 200000000))
+```
+
+These trends reflect the complex interplay of factors such as socio-economic conditions. When we consider the impact of water availability in schools on life expectancy, it becomes evident that access to clean water directly influences health outcomes. This signifies the inevitable role of water as a fundamental resource for humanity, emphasizing the urgency of preserving it for future generations. By observing the impact of the availability of water in schools on life expectancy, we can identify that the availability of water directly affects life expectancy and conclude that water is an essential source for mankind and it is important to preserve water for future generations.
+
+## Conclusion
+
+To conclude water availability in schools is a *critical issue globally*, particularly in African countries where there is a significant lack of adequate water resources. The comparative analysis of trends in water availability across different countries suggests that progress varies, with some countries showing improvement while few others remain stagnant. This indicates that factors such as *socio-economic conditions* play a crucial role in determining water accessibility. Furthermore, the direct impact of water availability on life expectancy signifies the urgent need to ensure clean water access in schools for the well-being of students and future generations.
